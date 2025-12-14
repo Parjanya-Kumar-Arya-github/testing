@@ -1,0 +1,63 @@
+# Stage 1: builder
+FROM node:24-bullseye-slim AS builder
+WORKDIR /usr/src/app
+
+# Install build dependencies needed for native builds (prisma, etc)
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+    python3 build-essential ca-certificates openssl curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copy package files and install all deps (dev + prod) in builder
+COPY package.json package-lock.json ./
+RUN npm install
+
+# Copy rest of repo (including prisma/schema.prisma)
+COPY . .
+
+# Generate Prisma client and build
+RUN npx prisma generate
+RUN npm run build
+
+# Stage 2: runtime with PM2 (updated)
+FROM node:24-bullseye-slim AS runtime
+WORKDIR /usr/src/app
+
+# Minimal OS deps
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates openssl curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Copy built app and node_modules from builder
+COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/package.json ./package.json
+COPY --from=builder /usr/src/app/ecosystem.config.js ./ecosystem.config.js
+COPY --from=builder /usr/src/app/node_modules ./node_modules
+COPY --from=builder /usr/src/app/prisma ./prisma
+
+# Set PM2 home (where pm2 stores runtime files). Use a path we control.
+ENV PM2_HOME=/etc/pm2
+# Ensure HOME is set for the appuser (pm2 sometimes uses HOME/.pm2 fallback)
+ENV HOME=/home/appuser
+ENV NODE_ENV=production
+ENV PORT=3000
+
+# Create pm2 home & app log dir and install pm2 as root
+RUN mkdir -p $PM2_HOME /var/log/auth-backend $HOME \
+ && npm install -g pm2@5.3.0 pm2-logrotate \
+ && pm2 install pm2-logrotate || true \
+ && pm2 set pm2-logrotate:max_size 10M \
+ && pm2 set pm2-logrotate:retain 14 \
+ && pm2 set pm2-logrotate:compress true \
+ && pm2 set pm2-logrotate:workerInterval 30
+
+# Create non-root user, ensure ownership of needed dirs BEFORE switching
+RUN useradd --no-create-home --home-dir $HOME --shell /usr/sbin/nologin appuser \
+ && mkdir -p $HOME \
+ && chown -R appuser:appuser $PM2_HOME /var/log/auth-backend /usr/src/app $HOME
+
+USER appuser
+
+EXPOSE 3000
+CMD ["pm2-runtime", "ecosystem.config.js", "--env", "production"]
+

@@ -1,0 +1,17 @@
+# Stage 1: builder (produce static files)
+FROM node:24-bullseye-slim AS builder
+WORKDIR /usr/src/app
+
+COPY package.json package-lock.json ./
+RUN npm install
+
+COPY . .
+ENV VITE_API_BASE=https://api.example.com
+RUN npm run build
+
+# Stage 2: minimal artifact carrier
+FROM busybox:1.36.0-uclibc
+WORKDIR /out
+COPY --from=builder /usr/src/app/dist ./dist
+# Keep container alive briefly if needed — docker-compose will copy dist to volume
+CMD ["sh", "-c", "echo 'frontend build ready' && sleep 3600"]

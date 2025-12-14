@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  redis:
+    image: redis:7.2.0
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./auth-backend
+      dockerfile: Dockerfile.prod
+      # FIXED: args must be INSIDE build
+      args:
+        http_proxy: http://proxy22.iitd.ac.in:3128
+        https_proxy: http://proxy22.iitd.ac.in:3128
+    env_file:
+      - ./auth-backend/.env
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./logs/auth-backend:/var/log/auth-backend
+    networks:
+      - web
+    depends_on:
+      - redis
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile.prod
+      # FIXED: args must be INSIDE build
+      args:
+        - VITE_API_BASE=https://YOUR_VM_IP:8443/api
+        - http_proxy=http://proxy22.iitd.ac.in:3128
+        - https_proxy=http://proxy22.iitd.ac.in:3128
+    env_file:
+      - ./.env
+    ports:
+      # FIXED: HOST_PORT:CONTAINER_PORT
+      # We map Host 8080 -> Container 80
+      - "8080:80"
+      # We map Host 8443 -> Container 443
+      - "8443:443"
+    volumes:
+      - ./certs:/etc/ssl/certs:ro
+    restart: unless-stopped
+    networks:
+      - web
+    depends_on:
+      - backend
+
+networks:
+  web:
+    driver: bridge

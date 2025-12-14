@@ -1,0 +1,54 @@
+services:
+  redis:
+    image: redis:7.2.0
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+
+  mongo:
+    image: mongo:6.0
+    command: [ "--replSet", "rs0", "--bind_ip_all" ]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: auth_db
+
+  backend:
+    build:
+      context: ./auth-backend
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./auth-backend/.env
+    volumes:
+      - ./auth-backend:/usr/src/app:cached
+      - backend_node_modules:/usr/src/app/node_modules
+    ports:
+      - '3000:3000'
+    depends_on:
+      - redis
+      # - mongo
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./auth-frontend
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./auth-frontend/.env
+    volumes:
+      - ./auth-frontend:/usr/src/app:cached
+      - frontend_node_modules:/usr/src/app/node_modules
+    environment:
+      HOST: 0.0.0.0
+      PORT: 5173
+    ports:
+      - '5173:5173'
+    depends_on:
+      - backend
+
+volumes:
+  backend_node_modules:
+  frontend_node_modules:
+  mongo_data:

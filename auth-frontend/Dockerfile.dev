@@ -1,0 +1,17 @@
+# Frontend (Vite) development Dockerfile
+FROM node:24
+WORKDIR /usr/src/app
+
+# install deps from lockfile
+COPY package.json package-lock.json ./
+RUN npm install
+
+# copy source (will be overmounted by compose in dev)
+COPY . .
+
+ENV NODE_ENV=development
+ENV HOST=0.0.0.0
+ENV PORT=5173
+EXPOSE 5173
+
+CMD ["npm", "run", "dev"]

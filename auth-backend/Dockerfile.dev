@@ -1,0 +1,32 @@
+# Docker/Dockerfile.dev
+
+FROM node:24-bullseye-slim
+
+# RUN apt-get update && apt-get install -y \
+#     python3 build-essential bash ca-certificates \
+#     && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /
+
+# Build-time ARGs
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
+ENV HOST=0.0.0.0
+
+# Copy only package files first (from parent folder)
+COPY ../package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy prisma schema (from root folder)
+COPY ../prisma ./prisma
+
+# Copy all project files from root
+COPY ../ ./
+
+# Generate prisma client
+RUN npx prisma generate
+
+EXPOSE 3000
+CMD ["npm", "run", "start:dev"]
